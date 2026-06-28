@@ -3,6 +3,7 @@ Database access and dynamic analytics for the normalized schema.
 """
 from __future__ import annotations
 
+import time
 from collections import Counter, defaultdict
 from statistics import mean, median, pstdev
 from typing import Any, Optional
@@ -14,6 +15,21 @@ from app import models, schemas
 
 
 TEST_ORDER = {"T1": 1, "T2": 2, "T3": 3, "T4": 4}
+
+# ── Lightweight TTL cache for expensive cohort-wide computations ──────────
+# get_student_scores() recomputes EVERY student's average from scratch by
+# scanning the whole marks table. That's required for ranking, but doing it
+# on every single profile view made the app feel slow. We cache the result
+# for a short window so repeated requests (e.g. several people viewing
+# profiles within the same minute) reuse the same computed cohort scores
+# instead of recalculating from scratch each time.
+_SCORES_CACHE: dict[Optional[int], tuple[float, list[dict[str, Any]]]] = {}
+_SCORES_CACHE_TTL_SECONDS = 60
+
+
+def invalidate_scores_cache() -> None:
+    """Call this after marks are added/edited/imported so ranks update immediately."""
+    _SCORES_CACHE.clear()
 
 
 def to_float(value: Any) -> float:
@@ -232,6 +248,20 @@ def get_subject_breakdown(marks: list[models.Mark]) -> list[dict[str, Any]]:
 
 
 def get_student_scores(
+    db: Session,
+    semester_number: Optional[int] = None,
+) -> list[dict[str, Any]]:
+    cache_key = semester_number
+    cached = _SCORES_CACHE.get(cache_key)
+    if cached and (time.monotonic() - cached[0]) < _SCORES_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    scores = _get_student_scores_uncached(db, semester_number)
+    _SCORES_CACHE[cache_key] = (time.monotonic(), scores)
+    return scores
+
+
+def _get_student_scores_uncached(
     db: Session,
     semester_number: Optional[int] = None,
 ) -> list[dict[str, Any]]:
