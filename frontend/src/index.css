@@ -216,6 +216,14 @@
   min-height: calc(100vh - 140px);
 }
 
+@media (max-width: 1023px) {
+  .search-page-grid {
+    align-items: start;
+    min-height: auto;
+    padding-top: 0.5rem;
+  }
+}
+
 @media (min-width: 1024px) {
   .search-page-grid {
     grid-template-columns: 1.1fr 0.9fr;
@@ -1053,6 +1061,83 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   ADMIN POPUP (BIG MODAL)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.admin-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(6, 7, 14, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+.admin-popup-card {
+  max-width: 560px;
+  width: 100%;
+  padding: 3.5rem 2.5rem 3rem;
+  text-align: center;
+  border-radius: 32px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--rose-500) 20%, var(--panel)), var(--panel) 70%);
+  border: 1px solid color-mix(in srgb, var(--rose-500) 40%, transparent);
+  box-shadow: 0 30px 90px -20px color-mix(in srgb, var(--rose-500) 55%, transparent);
+}
+
+.admin-popup-danger-sign {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.admin-popup-triangle {
+  width: 120px;
+  height: 104px;
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--rose-500) 65%, transparent));
+  animation: danger-pulse 1.6s ease-in-out infinite;
+}
+
+.admin-popup-label {
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: var(--rose-500);
+  margin-bottom: 1rem;
+}
+
+.admin-popup-title {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 800;
+  line-height: 1.35;
+  color: var(--text-strong, inherit);
+  margin-bottom: 0.5rem;
+}
+
+.admin-popup-haha {
+  font-size: 2.75rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  color: var(--rose-500);
+  margin-bottom: 1.25rem;
+  animation: danger-pulse 1.6s ease-in-out infinite;
+}
+
+.admin-popup-subtext {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+.admin-popup-close-btn {
+  margin: 0 auto;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    FOOTER
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -1133,6 +1218,14 @@
   text-decoration: none;
   box-shadow: -3px -3px 8px var(--shadow-light), 4px 5px 10px var(--shadow-dark);
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 220ms ease, color 200ms ease;
+}
+
+.soc-btn svg {
+  width: 1rem;
+  height: 1rem;
+  max-width: 100%;
+  max-height: 100%;
+  flex-shrink: 0;
 }
 
 .soc-btn:hover {
@@ -1237,34 +1330,8 @@ input:focus-visible {
 
 
 
-.admin-popup-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-  display: grid;
-  place-items: center;
-  padding: 1.5rem;
-  background: rgba(6, 7, 14, 0.78);
-  backdrop-filter: blur(6px);
-}
-.admin-popup-card {
-  max-width: 560px;
-  width: 100%;
-  padding: 3.5rem 2.5rem 3rem;
-  text-align: center;
-  border-radius: 32px;
-  background: linear-gradient(160deg, color-mix(in srgb, var(--rose-500) 20%, var(--panel)), var(--panel) 70%);
-  border: 1px solid color-mix(in srgb, var(--rose-500) 40%, transparent);
-  box-shadow: 0 30px 90px -20px color-mix(in srgb, var(--rose-500) 55%, transparent);
-}
-.admin-popup-danger-sign { display: flex; justify-content: center; margin-bottom: 1.5rem; }
-.admin-popup-triangle {
-  width: 120px; height: 104px;
-  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--rose-500) 65%, transparent));
-  animation: danger-pulse 1.6s ease-in-out infinite;
-}
-.admin-popup-label { font-size: 0.8rem; font-weight: 800; letter-spacing: 0.2em; color: var(--rose-500); margin-bottom: 1rem; }
-.admin-popup-title { font-family: var(--font-display); font-size: 1.8rem; font-weight: 800; line-height: 1.35; margin-bottom: 0.5rem; }
-.admin-popup-haha { font-size: 2.75rem; font-weight: 900; letter-spacing: 0.05em; color: var(--rose-500); margin-bottom: 1.25rem; animation: danger-pulse 1.6s ease-in-out infinite; }
-.admin-popup-subtext { font-size: 1.05rem; font-weight: 600; color: var(--text-muted); line-height: 1.6; margin-bottom: 2rem; }
-.admin-popup-close-btn { margin: 0 auto; }
+
+
+
+
+
