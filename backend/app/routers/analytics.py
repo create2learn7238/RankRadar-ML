@@ -135,6 +135,30 @@ def get_cohort_admin_stats(
     }
 
 
+@router.post(
+    "/analytics/admin/refresh-scores",
+    summary="Force an immediate recompute of cached student scores/ranks",
+)
+def refresh_scores_cache(
+    current_user: models.User = Depends(require_admin),
+):
+    """
+    Student scores/ranks are cached for a short time (see crud.py) so that
+    profile, dashboard, and leaderboard pages don't re-scan the whole
+    database on every request. New enrollments/marks are inserted directly
+    into the database, so this cache normally just expires on its own
+    after crud.SCORES_CACHE_TTL_SECONDS.
+
+    Call this right after a known data load if you don't want to wait for
+    that to happen automatically.
+    """
+    crud.invalidate_scores_cache()
+    return {
+        "status": "ok",
+        "detail": "Scores cache cleared; next request will recompute from the database.",
+    }
+
+
 @router.get("/leaderboard", response_model=list[schemas.LeaderboardEntry], summary="Top students")
 def leaderboard(
     limit: int = Query(10, ge=1, le=100),
