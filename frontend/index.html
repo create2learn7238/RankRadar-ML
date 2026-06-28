@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RankRadar</title>
+    <meta name="description" content="RankRadar is a premium analytics platform for LJ IET that tracks student academic performance, generates ML predictions, and visualizes cohort intelligence." />
+    <meta name="theme-color" content="#6c63ff" />
+    <script>
+      (function () {
+        var theme = localStorage.getItem("rankradar-theme") || "dark";
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
+    <style>
+      html, body { background: #0e0f17; }
+      html[data-theme="light"], html[data-theme="light"] body { background: #e9edf6; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

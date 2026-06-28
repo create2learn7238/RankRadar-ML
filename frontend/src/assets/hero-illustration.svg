@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560" width="640" height="560">
+  <defs>
+    <linearGradient id="heroSlab" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8D85FF"/>
+      <stop offset="55%" stop-color="#6C63FF"/>
+      <stop offset="100%" stop-color="#4C46E0"/>
+    </linearGradient>
+    <linearGradient id="heroSlabTop" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#E7E4FF" stop-opacity="0.55"/>
+    </linearGradient>
+    <linearGradient id="heroMint" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#54E0BE"/>
+      <stop offset="100%" stop-color="#2BC9A4"/>
+    </linearGradient>
+    <linearGradient id="heroAmber" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFD27D"/>
+      <stop offset="100%" stop-color="#FFB454"/>
+    </linearGradient>
+    <radialGradient id="heroGlow" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#6C63FF" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#6C63FF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="heroSoft" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#1F1B4D" flood-opacity="0.22"/>
+    </filter>
+    <filter id="heroSoftSm" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#1F1B4D" flood-opacity="0.20"/>
+    </filter>
+  </defs>
+
+  <ellipse cx="320" cy="290" rx="280" ry="280" fill="url(#heroGlow)"/>
+
+  <g filter="url(#heroSoftSm)">
+    <ellipse cx="118" cy="120" rx="46" ry="46" fill="url(#heroAmber)"/>
+    <path d="M100 120 110 130 138 102" stroke="#5C3B00" stroke-opacity="0.55" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g filter="url(#heroSoftSm)">
+    <rect x="488" y="78" width="92" height="92" rx="26" fill="url(#heroMint)"/>
+    <path d="M512 124h44M512 140h30" stroke="#063B2E" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <g filter="url(#heroSoft)">
+    <rect x="140" y="150" width="360" height="300" rx="38" fill="url(#heroSlab)"/>
+    <rect x="140" y="150" width="360" height="300" rx="38" fill="url(#heroSlabTop)" opacity="0.18"/>
+  </g>
+
+  <g transform="translate(178 196)">
+    <rect width="284" height="40" rx="14" fill="#ffffff" opacity="0.18"/>
+    <circle cx="22" cy="20" r="9" fill="#FFD27D"/>
+    <rect x="44" y="13" width="120" height="14" rx="7" fill="#ffffff" opacity="0.75"/>
+  </g>
+
+  <g transform="translate(178 256)">
+    <rect width="284" height="150" rx="20" fill="#1F1B4D" opacity="0.18"/>
+    <g transform="translate(20 20)">
+      <rect x="0" y="78" width="28" height="40" rx="8" fill="url(#heroAmber)"/>
+      <rect x="40" y="52" width="28" height="66" rx="8" fill="url(#heroMint)"/>
+      <rect x="80" y="22" width="28" height="96" rx="8" fill="#ffffff"/>
+      <rect x="120" y="40" width="28" height="78" rx="8" fill="url(#heroAmber)"/>
+      <rect x="160" y="6" width="28" height="112" rx="8" fill="url(#heroMint)"/>
+      <rect x="200" y="58" width="28" height="60" rx="8" fill="#ffffff" opacity="0.85"/>
+      <path d="M0 70 40 44 80 14 120 32 160 -2 200 50" stroke="#FFE3A3" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.9"/>
+    </g>
+  </g>
+
+  <g transform="translate(178 426)">
+    <rect width="130" height="14" rx="7" fill="#ffffff" opacity="0.55"/>
+    <rect x="0" y="24" width="90" height="14" rx="7" fill="#ffffff" opacity="0.32"/>
+  </g>
+
+  <g filter="url(#heroSoftSm)" transform="translate(442 410)">
+    <circle r="40" fill="#ffffff"/>
+    <circle r="40" fill="url(#heroMint)" opacity="0.12"/>
+    <path d="M-14 2 L-3 14 L17 -12" stroke="#2BC9A4" stroke-width="6.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g filter="url(#heroSoftSm)" transform="translate(108 470)">
+    <rect x="-58" y="-30" width="116" height="60" rx="22" fill="#ffffff"/>
+    <text x="0" y="9" text-anchor="middle" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="bold" fill="#4C46E0">98%</text>
+  </g>
+</svg>
