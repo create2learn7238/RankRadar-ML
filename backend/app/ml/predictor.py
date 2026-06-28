@@ -48,7 +48,7 @@ def predict_final_score(
         confidence = "Low - high variation; prediction may be less accurate."
 
     return {
-        "predicted_final_score": score,
+        "predicted_final_score": score*2,
         "confidence_note": confidence,
         "input_avg": input_avg,
         "subject_name": subject_name,
