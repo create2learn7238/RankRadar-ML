@@ -146,6 +146,10 @@
 
 .app-main { flex: 1; }
 
+@media (max-width: 1023px) {
+  .app-main { flex: none; }
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    CLAYMORPHISM CORE
    ═══════════════════════════════════════════════════════════════════ */
@@ -220,7 +224,8 @@
   .search-page-grid {
     align-items: start;
     min-height: auto;
-    padding-top: 0.5rem;
+    padding: 1rem 0.5rem;
+    gap: 0;
   }
 }
 
@@ -233,6 +238,10 @@
 }
 
 .search-page-content { max-width: 640px; }
+
+@media (max-width: 1023px) {
+  .search-page-content { margin-top: 1.25rem; }
+}
 
 /* LJ United Network badge — prominent */
 .lj-badge {
@@ -1327,11 +1336,3 @@ input:focus-visible {
 .mx-auto { margin-inline: auto; }
 .mt-5 { margin-top: 1.25rem; }
 .whitespace-nowrap { white-space: nowrap; }
-
-
-
-
-
-
-
-
