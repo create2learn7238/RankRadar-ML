@@ -28,7 +28,8 @@ engine = create_engine(
     pool_pre_ping=True,        # detect stale connections
     pool_recycle=300,          # recycle every 5 min (Neon idles quickly)
     pool_size=5,
-    max_overflow=10,
+    max_overflow=5,
+    pool_timeout=10,           # fail fast (10s) instead of hanging when the pool is full
     echo=False,                # set True to log all SQL in debug mode
 )
 
