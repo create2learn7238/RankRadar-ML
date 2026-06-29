@@ -24,7 +24,7 @@ TEST_ORDER = {"T1": 1, "T2": 2, "T3": 3, "T4": 4}
 # profiles within the same minute) reuse the same computed cohort scores
 # instead of recalculating from scratch each time.
 _SCORES_CACHE: dict[Optional[int], tuple[float, list[dict[str, Any]]]] = {}
-_SCORES_CACHE_TTL_SECONDS = 60
+_SCORES_CACHE_TTL_SECONDS = 300
 
 
 def invalidate_scores_cache() -> None:
