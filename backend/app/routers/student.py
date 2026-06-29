@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLATimeoutError
 from sqlalchemy.orm import Session
 
 from app import crud, schemas
@@ -30,7 +31,15 @@ def search_student(
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
-    matches = [crud.student_to_summary(student) for student in crud.search_students(db, q, limit)]
+    try:
+        matches = [crud.student_to_summary(student) for student in crud.search_students(db, q, limit)]
+    except (OperationalError, SQLATimeoutError):
+        # The DB connection pool was exhausted or the query timed out — this is
+        # NOT the same as "no such student", so don't say "not found" here.
+        raise HTTPException(
+            status_code=503,
+            detail="Server is busy right now — please try again in a few seconds.",
+        )
     if not matches:
         raise HTTPException(status_code=404, detail="No matching student found")
     return {
@@ -42,15 +51,21 @@ def search_student(
 
 @router.get("/{enrollment_no}", summary="Get complete student profile with marks and analytics")
 def get_student_profile(enrollment_no: str, db: Session = Depends(get_db)):
-    student = crud.get_student_by_enrollment(db, enrollment_no)
-    if not student and enrollment_no.isdigit():
-        student = crud.get_student_by_id(db, int(enrollment_no))
-    if not student:
-        raise HTTPException(status_code=404, detail=f"Student '{enrollment_no}' not found.")
+    try:
+        student = crud.get_student_by_enrollment(db, enrollment_no)
+        if not student and enrollment_no.isdigit():
+            student = crud.get_student_by_id(db, int(enrollment_no))
+        if not student:
+            raise HTTPException(status_code=404, detail=f"Student '{enrollment_no}' not found.")
 
-    summary = crud.student_to_summary(student)
-    marks = [crud.mark_to_dict(mark) for mark in crud.get_marks_for_student(db, student.id)]
-    analytics = crud.calculate_student_analytics_dynamic(db, student.id)
+        summary = crud.student_to_summary(student)
+        marks = [crud.mark_to_dict(mark) for mark in crud.get_marks_for_student(db, student.id)]
+        analytics = crud.calculate_student_analytics_dynamic(db, student.id)
+    except (OperationalError, SQLATimeoutError):
+        raise HTTPException(
+            status_code=503,
+            detail="Server is busy right now — please try again in a few seconds.",
+        )
 
     return {
         **summary,
