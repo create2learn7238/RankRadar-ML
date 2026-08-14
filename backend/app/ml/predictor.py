@@ -58,11 +58,7 @@ def predict_final_score(
         }
 
     return {
-<<<<<<< HEAD
         "predicted_final_score": score_out_of_50,
-=======
-        "predicted_final_score": score*2,
->>>>>>> 03c6972c9eec3e7829993afbbea3fd5bd0ce3e39
         "confidence_note": confidence,
         "input_avg": input_avg,
         "subject_name": subject_name,

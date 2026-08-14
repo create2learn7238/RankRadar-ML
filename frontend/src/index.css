@@ -512,15 +512,11 @@ header.clay {
   max-width: 620px;
 }
 
-<<<<<<< HEAD
-/* LJ United Network Badge */
-=======
 @media (max-width: 1023px) {
   .search-page-content { margin-top: 1.25rem; }
 }
 
-/* LJ United Network badge — prominent */
->>>>>>> 03c6972c9eec3e7829993afbbea3fd5bd0ce3e39
+/* LJ United Network Badge */
 .lj-badge {
   display: inline-flex;
   align-items: center;
@@ -1473,18 +1469,14 @@ header.clay {
   animation: shimmer 1.8s infinite linear;
 }
 
-<<<<<<< HEAD
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   FOOTER STYLES
-=======
 .skeleton-sheen::after {
   animation: sheen-slide 1.6s infinite;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--violet-400) 40%, transparent), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-violet-400) 40%, transparent), transparent);
   content: "";
   inset: 0;
   position: absolute;
@@ -1759,7 +1751,6 @@ font-size:100rem;
     padding: 0.85rem 0.65rem;
   }
 
-<<<<<<< HEAD
   .prediction-stat-val {
     font-size: 1.1rem;
   }
@@ -1776,8 +1767,7 @@ font-size:100rem;
     grid-template-columns: 1fr;
   }
 }
-=======
+
 .mx-auto { margin-inline: auto; }
 .mt-5 { margin-top: 1.25rem; }
 .whitespace-nowrap { white-space: nowrap; }
->>>>>>> 03c6972c9eec3e7829993afbbea3fd5bd0ce3e39
