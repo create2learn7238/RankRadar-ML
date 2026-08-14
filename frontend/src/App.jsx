@@ -355,6 +355,7 @@ function App() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState({ msg: "", type: "info" });
   const [showAdminPopup, setShowAdminPopup] = useState(false);
+  const [activeSection, setActiveSection] = useState("overview");
 
   const isDark = theme === "dark";
 
@@ -1183,6 +1184,7 @@ const renderSearchPage = () => (
   );
 
   const scrollToSection = (id) => {
+    setActiveSection(id);
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth" });
   };
@@ -1212,7 +1214,7 @@ const renderSearchPage = () => (
         className="profile-page"
       >
         <div className="app-dashboard-shell">
-          <div className="app-main-workspace pb-20 md:pb-0">
+          <div className="app-main-workspace pb-24 md:pb-0">
             <div id="overview" className="space-y-6">
               {renderProfileHero()}
               {renderAnalytics()}
@@ -1226,23 +1228,35 @@ const renderSearchPage = () => (
 
         {/* Mobile Glass Bottom Navigation Bar (<768px) */}
         <nav className="app-mobile-nav flex md:hidden" aria-label="Mobile Navigation">
-          <button onClick={() => scrollToSection("overview")} className="mobile-nav-btn active">
+          <button
+            onClick={() => scrollToSection("overview")}
+            className={`mobile-nav-btn ${activeSection === "overview" ? "active" : ""}`}
+          >
             <UserRound className="h-4 w-4" />
             <span>Overview</span>
           </button>
-          <button onClick={() => scrollToSection("sem4")} className="mobile-nav-btn">
+          <button
+            onClick={() => scrollToSection("sem4")}
+            className={`mobile-nav-btn ${activeSection === "sem4" ? "active" : ""}`}
+          >
             <BrainCircuit className="h-4 w-4 text-[var(--color-cyan-400)]" />
             <span>Predict</span>
           </button>
-          <button onClick={() => scrollToSection("sem3")} className="mobile-nav-btn">
-            <BookOpen className="h-4 w-4" />
+          <button
+            onClick={() => scrollToSection("sem3")}
+            className={`mobile-nav-btn ${activeSection === "sem3" ? "active" : ""}`}
+          >
+            <BookOpen className="h-4 w-4 text-[var(--color-violet-400)]" />
             <span>Sem III</span>
           </button>
-          <button onClick={() => scrollToSection("charts")} className="mobile-nav-btn">
-            <BarChart3 className="h-4 w-4" />
+          <button
+            onClick={() => scrollToSection("charts")}
+            className={`mobile-nav-btn ${activeSection === "charts" ? "active" : ""}`}
+          >
+            <BarChart3 className="h-4 w-4 text-[var(--color-cyan-400)]" />
             <span>Charts</span>
           </button>
-          <button onClick={resetToSearch} className="mobile-nav-btn text-rose-400">
+          <button onClick={resetToSearch} className="mobile-nav-btn text-rose-400 hover:text-rose-300">
             <Search className="h-4 w-4" />
             <span>Search</span>
           </button>
