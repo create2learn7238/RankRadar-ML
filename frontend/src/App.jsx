@@ -32,6 +32,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "./api";
+import EngineRedirectOverlay from "./components/EngineRedirectOverlay";
 import heroIllustration from "./assets/hero-illustration.svg";
 import emptyStateIllustration from "./assets/empty-state.svg";
 
@@ -130,27 +131,55 @@ function buildSemesterSubjects(marks = [], semester, predictions = {}) {
   for (const mark of marks) {
     if (Number(mark.semester) !== Number(semester)) continue;
     const subjectName = mark.subject_name || "Unknown Subject";
+    const subjectCode = mark.subject_code || "";
+    const isFCSP2 = subjectCode === "FCSP-II" || subjectName.toLowerCase().includes("foundation of computer science");
+
+    // Do not try to fetch T4 from DB for FCSP-II as per requirement
+    if (isFCSP2 && mark.test_type === "T4") continue;
+
     if (!bySubject.has(subjectName)) {
-      bySubject.set(subjectName, { subjectName, subjectCode: mark.subject_code || "", tests: {} });
+      bySubject.set(subjectName, { subjectName, subjectCode, tests: {} });
     }
+    
+    // T4 marks stored out of 25 are scaled by 2 to show out of 50 (e.g. 18 -> 36)
+    let markVal = Number(mark.marks ?? mark.obtained_marks ?? 0);
+    if (mark.test_type === "T4" && markVal <= 25) {
+      markVal = Math.round(markVal * 2 * 10) / 10;
+    }
+
     bySubject.get(subjectName).tests[mark.test_type] = {
-      marks: Number(mark.marks ?? mark.obtained_marks ?? 0),
-      max: Number(mark.max_marks || TEST_MAX[mark.test_type] || 25),
+      marks: markVal,
+      max: Number(mark.test_type === "T4" ? 50 : (mark.max_marks || TEST_MAX[mark.test_type] || 25)),
     };
   }
 
   return Array.from(bySubject.values())
     .map((subject) => {
+      const isFCSP2 = subject.subjectCode === "FCSP-II" || subject.subjectName.toLowerCase().includes("foundation of computer science");
+      
+      if (isFCSP2) {
+        const t1 = subject.tests.T1?.marks;
+        const t2 = subject.tests.T2?.marks;
+        const t3 = subject.tests.T3?.marks;
+        const validMarks = [t1, t2, t3].filter((v) => v !== undefined && v !== null);
+        if (validMarks.length > 0) {
+          const avg25 = validMarks.reduce((a, b) => a + Number(b), 0) / validMarks.length;
+          const t4Avg50 = Math.round(avg25 * 2 * 10) / 10;
+          subject.tests.T4 = { marks: t4Avg50, max: 50 };
+        }
+      }
+
       const testEntries = Object.entries(subject.tests);
       const obtained = testEntries.reduce((sum, [, v]) => sum + Number(v.marks || 0), 0);
       const maxMarks = testEntries.reduce((sum, [t, v]) => sum + Number(v.max || TEST_MAX[t] || 25), 0);
       const percentage = maxMarks ? Math.round((obtained / maxMarks) * 1000) / 10 : 0;
       const hasActualT4 = subject.tests.T4 !== undefined;
+      const predictedT4 = isFCSP2 ? subject.tests.T4?.marks : predictions[subject.subjectName];
       return {
         ...subject, obtained, maxMarks, percentage,
         average: testEntries.length ? Math.round((obtained / testEntries.length) * 10) / 10 : 0,
         status: getStatus(percentage),
-        predictedT4: predictions[subject.subjectName],
+        predictedT4,
         actualT4: subject.tests.T4?.marks,
         hasActualT4,
       };
@@ -264,12 +293,60 @@ function MLLoader({ label = "Loading", size = "default" }) {
   );
 }
 
+function parseRouteFromUrl() {
+  const path = window.location.pathname.toLowerCase();
+  const searchParams = new URLSearchParams(window.location.search);
+  const hash = window.location.hash.replace("#", "").toLowerCase();
+
+  let enrollment = searchParams.get("student") || searchParams.get("enrollment") || searchParams.get("id") || "";
+  
+  if (!enrollment) {
+    const parts = path.split("/").filter(Boolean);
+    if ((parts[0] === "student" || parts[0] === "profile") && parts[1]) {
+      enrollment = parts[1];
+    }
+  }
+
+  if (!enrollment) {
+    enrollment = localStorage.getItem("rankradar-last-student") || "";
+  }
+
+  let targetPage = "search";
+  let targetSection = hash || "overview";
+
+  if (path.includes("/dashboard") || path.includes("/profile") || path.includes("/student")) {
+    targetPage = enrollment ? "profile" : "search";
+  } else if (path.includes("/prediction") || path.includes("/predict")) {
+    targetPage = enrollment ? "profile" : "search";
+    targetSection = "sem4";
+  } else if (path.includes("/analytics") || path.includes("/charts")) {
+    targetPage = enrollment ? "profile" : "search";
+    targetSection = "charts";
+  } else if (path.includes("/history") || path.includes("/sem3")) {
+    targetPage = enrollment ? "profile" : "search";
+    targetSection = "sem3";
+  } else if (enrollment && (path !== "/" && path !== "/search")) {
+    targetPage = "profile";
+  }
+
+  return { targetPage, enrollment, targetSection, path };
+}
+
+function updateBrowserUrl(routePath, enrollmentNo = "") {
+  const url = enrollmentNo ? `${routePath}?student=${encodeURIComponent(enrollmentNo)}` : routePath;
+  if (window.location.pathname + window.location.search !== url) {
+    window.history.pushState({ routePath, enrollmentNo }, "", url);
+  }
+}
+
 function App() {
+  const initialRoute = parseRouteFromUrl();
   const [theme, setTheme] = useState(() => localStorage.getItem("rankradar-theme") || "dark");
-  const [page, setPage] = useState("search");
+  const [page, setPage] = useState(() => (initialRoute.enrollment && initialRoute.targetPage === "profile" ? "profile" : "search"));
   const [searchTerm, setSearchTerm] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
-  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(() => Boolean(initialRoute.enrollment && initialRoute.targetPage === "profile"));
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [student, setStudent] = useState(null);
   const [cohortData, setCohortData] = useState([]);
   const [predictions, setPredictions] = useState({});
@@ -277,7 +354,7 @@ function App() {
   const [predictionDone, setPredictionDone] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState({ msg: "", type: "info" });
-const [showAdminPopup, setShowAdminPopup] = useState(false);
+  const [showAdminPopup, setShowAdminPopup] = useState(false);
 
   const isDark = theme === "dark";
 
@@ -285,6 +362,36 @@ const [showAdminPopup, setShowAdminPopup] = useState(false);
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("rankradar-theme", theme);
   }, [theme]);
+
+  // Route state rehydration on page load / refresh
+  useEffect(() => {
+    const routeInfo = parseRouteFromUrl();
+    if (routeInfo.enrollment && routeInfo.targetPage === "profile") {
+      localStorage.setItem("rankradar-last-student", routeInfo.enrollment);
+      openProfile(routeInfo.enrollment).then(() => {
+        if (routeInfo.targetSection) {
+          setTimeout(() => {
+            const el = document.getElementById(routeInfo.targetSection);
+            if (el) el.scrollIntoView({ behavior: "smooth" });
+          }, 350);
+        }
+      });
+    } else {
+      setPage("search");
+    }
+
+    const handlePopState = () => {
+      const info = parseRouteFromUrl();
+      if (info.enrollment && info.targetPage === "profile") {
+        openProfile(info.enrollment);
+      } else {
+        setPage("search");
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     if (!toast.msg) return;
@@ -372,6 +479,8 @@ const [showAdminPopup, setShowAdminPopup] = useState(false);
   ];
 
   const resetToSearch = () => {
+    localStorage.removeItem("rankradar-last-student");
+    updateBrowserUrl("/");
     setPage("search");
     setStudent(null);
     setPredictions({});
@@ -395,6 +504,7 @@ const [showAdminPopup, setShowAdminPopup] = useState(false);
       return;
     }
     setSearchLoading(true);
+    setIsRedirecting(true);
     setError("");
     setStudent(null);
     setPredictions({});
@@ -402,28 +512,35 @@ const [showAdminPopup, setShowAdminPopup] = useState(false);
     try {
       const result = await api.searchStudents(query);
       if (!result?.best_match) throw new Error("No student found with that enrollment number.");
-      showToast("Student found — loading report...", "success");
+      showToast("Student found — booting ML engine...", "success");
       await openProfile(result.best_match);
     } catch (err) {
       setError(err.message || "No student matched that enrollment number.");
       showToast("Search failed", "error");
+      setIsRedirecting(false);
     } finally {
       setSearchLoading(false);
     }
   };
 
   const openProfile = async (studentRecord) => {
-    const enrollmentNo = getEnrollment(studentRecord) || studentRecord?.id;
+    const enrollmentNo = typeof studentRecord === "string" ? studentRecord : (getEnrollment(studentRecord) || studentRecord?.id);
     if (!enrollmentNo) return;
+    localStorage.setItem("rankradar-last-student", enrollmentNo);
+    updateBrowserUrl("/dashboard", enrollmentNo);
     setPage("profile");
     setProfileLoading(true);
+    setIsRedirecting(true);
     setError("");
     setStudent(null);
     setCohortData([]);
     setPredictions({});
     setPredictionDone(false);
     try {
-      const profile = await api.getStudentProfile(enrollmentNo);
+      const [profile] = await Promise.all([
+        api.getStudentProfile(enrollmentNo),
+        new Promise((resolve) => setTimeout(resolve, 1400)),
+      ]);
       setStudent(profile);
       showToast("Profile loaded", "success");
       api.getAllAnalytics().then((items) => setCohortData(items || [])).catch(() => setCohortData([]));
@@ -433,6 +550,7 @@ const [showAdminPopup, setShowAdminPopup] = useState(false);
       showToast("Profile failed", "error");
     } finally {
       setProfileLoading(false);
+      setIsRedirecting(false);
     }
   };
 
@@ -453,14 +571,24 @@ const handlePredictAll = async () => {
   showToast("Running ML prediction model...", "info");
   const results = await Promise.allSettled(
     semester4.map(async (subject) => {
+      const isFCSP2 = subject.subjectCode === "FCSP-II" || subject.subjectName.toLowerCase().includes("foundation of computer science");
       const t1 = getMarkValue(subject, "T1");
       const t2 = getMarkValue(subject, "T2");
       const t3 = getMarkValue(subject, "T3");
+      if (isFCSP2) {
+        const valid = [t1, t2, t3].filter((v) => v !== undefined && v !== null);
+        const avg = valid.length ? (valid.reduce((a, b) => a + Number(b), 0) / valid.length) * 2 : 0;
+        return { subjectName: subject.subjectName, score: Math.round(avg * 10) / 10 };
+      }
       if ([t1, t2, t3].some((v) => v === undefined || v === null)) {
         throw new Error(`Missing marks for ${subject.subjectName}`);
       }
       const prediction = await api.predictScore(t1, t2, t3, subject.subjectName);
-      return { subjectName: subject.subjectName, score: clamp(prediction.predicted_final_score, 0, 50) };
+      let predScore = Number(prediction.predicted_final_score || 0);
+      if (predScore > 0 && predScore <= 25) {
+        predScore = predScore * 2;
+      }
+      return { subjectName: subject.subjectName, score: clamp(predScore, 0, 50) };
     })
   );
   const next = {};
@@ -511,40 +639,75 @@ const renderHeader = () => (
     initial={{ opacity: 0, y: -16 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-    className="clay sticky top-3 z-30 px-4 py-3"
+    className="clay sticky top-3 z-30 px-4 py-2.5 mb-4"
   >
     <div className="flex items-center justify-between gap-3">
-      <button onClick={resetToSearch} className="flex items-center gap-3 text-left group">
-        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-[var(--violet-400)] to-[var(--cyan-500)] text-white shadow-[inset_0_2px_3px_rgba(255,255,255,0.4),inset_0_-6px_10px_rgba(0,0,0,0.18)] transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-105">
+      <button onClick={resetToSearch} className="flex items-center gap-3 text-left group shrink-0">
+        <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[var(--color-indigo-500)] to-[var(--color-cyan-500)] text-white shadow-md transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-105">
           <UserRound className="h-5 w-5" />
         </span>
-<span className="text-gradient-brand flex flex-col sm:flex-row items-center gap-2">
-  <span className="text-5xl font-extrabold leading-none">RankRadar</span>
-  <span className="flex flex-col sm:ml-3 text-md font-medium text-gray-300">
-    <p>"See your success before it happens" #MarksPrediction</p>
-  </span>
-</span>
+        <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+          <span className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-white via-indigo-200 to-cyan-300 bg-clip-text text-transparent">RankRadar</span>
+          <span className="text-xs font-medium text-slate-400 hidden xl:inline-block">
+            "See your success before it happens" #MarksPrediction
+          </span>
+        </div>
       </button>
-      <button
-        onClick={() => setTheme(isDark ? "light" : "dark")}
-        className="icon-btn"
-        aria-label="Toggle theme"
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={isDark ? "sun" : "moon"}
-            initial={{ rotate: -90, opacity: 0, scale: 0.5 }}
-            animate={{ rotate: 0, opacity: 1, scale: 1 }}
-            exit={{ rotate: 90, opacity: 0, scale: 0.5 }}
-            transition={{ duration: 0.25 }}
-            className="grid place-items-center"
+
+      {/* Header Center Navigation Pills (Visible when on Profile page) */}
+      {page === "profile" && student && (
+        <div className="hidden md:flex items-center gap-1 bg-[rgba(15,23,42,0.6)] backdrop-blur-md px-2 py-1 rounded-full border border-[rgba(255,255,255,0.08)]">
+          <button onClick={() => scrollToSection("overview")} className="px-3 py-1.5 rounded-full text-xs font-semibold text-slate-200 hover:text-white hover:bg-[rgba(99,102,241,0.2)] transition-all flex items-center gap-1.5 cursor-pointer">
+            <UserRound className="h-3.5 w-3.5 text-[var(--color-cyan-400)]" /> Overview
+          </button>
+          <button onClick={() => scrollToSection("sem4")} className="px-3 py-1.5 rounded-full text-xs font-semibold text-slate-200 hover:text-white hover:bg-[rgba(99,102,241,0.2)] transition-all flex items-center gap-1.5 cursor-pointer">
+            <BrainCircuit className="h-3.5 w-3.5 text-[var(--color-cyan-400)]" /> ML Predict
+          </button>
+          <button onClick={() => scrollToSection("sem3")} className="px-3 py-1.5 rounded-full text-xs font-semibold text-slate-200 hover:text-white hover:bg-[rgba(99,102,241,0.2)] transition-all flex items-center gap-1.5 cursor-pointer">
+            <BookOpen className="h-3.5 w-3.5 text-[var(--color-violet-400)]" /> Sem III
+          </button>
+          <button onClick={() => scrollToSection("charts")} className="px-3 py-1.5 rounded-full text-xs font-semibold text-slate-200 hover:text-white hover:bg-[rgba(99,102,241,0.2)] transition-all flex items-center gap-1.5 cursor-pointer">
+            <BarChart3 className="h-3.5 w-3.5 text-[var(--color-cyan-400)]" /> Charts
+          </button>
+          <button onClick={() => scrollToSection("insights")} className="px-3 py-1.5 rounded-full text-xs font-semibold text-slate-200 hover:text-white hover:bg-[rgba(99,102,241,0.2)] transition-all flex items-center gap-1.5 cursor-pointer">
+            <Target className="h-3.5 w-3.5 text-[var(--color-amber-400)]" /> Insights
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 shrink-0">
+        {/* Header Exit Button (Visible when on Profile page) */}
+        {page === "profile" && (
+          <button
+            onClick={resetToSearch}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-105"
           >
-            {isDark
-              ? <Sun className="h-5 w-5 text-[var(--amber-400)]" />
-              : <Moon className="h-5 w-5 text-[var(--violet-500)]" />}
-          </motion.span>
-        </AnimatePresence>
-      </button>
+            <LogOut className="h-4 w-4" />
+            <span>EXIT</span>
+          </button>
+        )}
+
+        <button
+          onClick={() => setTheme(isDark ? "light" : "dark")}
+          className="icon-btn"
+          aria-label="Toggle theme"
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={isDark ? "sun" : "moon"}
+              initial={{ rotate: -90, opacity: 0, scale: 0.5 }}
+              animate={{ rotate: 0, opacity: 1, scale: 1 }}
+              exit={{ rotate: 90, opacity: 0, scale: 0.5 }}
+              transition={{ duration: 0.25 }}
+              className="grid place-items-center"
+            >
+              {isDark
+                ? <Sun className="h-5 w-5 text-[var(--amber-400)]" />
+                : <Moon className="h-5 w-5 text-[var(--violet-500)]" />}
+            </motion.span>
+          </AnimatePresence>
+        </button>
+      </div>
     </div>
   </motion.header>
 );
@@ -621,17 +784,48 @@ const renderSearchPage = () => (
               pattern="[0-9]*"
             />
           </label>
-          <button type="submit" disabled={searchLoading} className="premium-btn search-btn">
-            {searchLoading ? (
-              <MLLoader size="sm" />
+          <button type="submit" disabled={searchLoading || isRedirecting} className="premium-btn search-btn group">
+            {searchLoading || isRedirecting ? (
+              <span className="flex items-center gap-2 font-mono text-xs text-cyan-200">
+                <BrainCircuit className="h-4 w-4 animate-spin text-cyan-300" />
+                <span>ENGINE RUNNING...</span>
+              </span>
             ) : (
               <>
                 <span>VIEW REPORT</span>
-                <ArrowRight className="h-5 w-5" />
+                <ArrowRight className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-1" />
               </>
             )}
           </button>
         </div>
+
+        {/* Quick Sample Enrollment Chips */}
+        <div className="mt-3 pt-2.5 border-t border-[var(--border-subtle)] flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+            <Sparkles className="h-3 w-3 text-[var(--color-cyan-400)]" />
+            Try Demos:
+          </span>
+          {[
+            { tag: "Demo 1", enroll: "24002171410039" },
+            { tag: "Demo 2", enroll: "24002170210107" },
+            { tag: "Demo 3", enroll: "24002171510025" },
+          ].map(({ tag, enroll }) => (
+            <button
+              key={enroll}
+              type="button"
+              disabled={isRedirecting}
+              onClick={() => {
+                setSearchTerm(enroll);
+                openProfile(enroll);
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(99,102,241,0.18)] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(0,240,255,0.4)] text-[11px] font-mono text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="font-sans text-[10px] font-bold text-[var(--color-cyan-400)]">{tag}</span>
+              <span className="opacity-90">{enroll}</span>
+            </button>
+          ))}
+        </div>
+
         {error ? (
           <motion.p
             initial={{ opacity: 0, x: -10 }}
@@ -656,14 +850,14 @@ const renderSearchPage = () => (
         opacity: { duration: 0.5, delay: 0.2 },
         scale: { duration: 0.5, delay: 0.2 },
         rotateY: { duration: 0.5, delay: 0.2 },
-        y: { duration: 5.5, repeat: Infinity, ease: "easeInOut", delay: 0.8 },
+        y: { duration: 5, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" },
       }}
       className="hero-img-wrap"
       style={{ perspective: 1000 }}
     >
       <img
         src={heroIllustration}
-        alt="RankRadar ML performance illustration"
+        alt="AI Student Performance Intelligence"
         className="hero-img"
       />
     </motion.div>
@@ -673,20 +867,39 @@ const renderSearchPage = () => (
 
   /* ──────────────── PROFILE LOADING ──────────────── */
   const renderProfileLoading = () => (
-    <div className="profile-loading-wrap">
-      <MLLoader label="Fetching student profile" />
-      <div className="skeleton-grid">
-        <SkeletonBlock className="h-40" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1,2,3,4].map((i) => <SkeletonBlock key={i} className="h-28" />)}
+    <motion.div
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      transition={{ duration: 0.3 }}
+      className="clay-panel my-12 p-8 md:p-12 text-center max-w-xl mx-auto shadow-2xl relative overflow-hidden"
+    >
+      <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-cyan-500/5 to-purple-500/10 pointer-events-none" />
+      <div className="relative z-10 flex flex-col items-center justify-center">
+        <div className="mb-6 flex items-center justify-center">
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 text-xs font-bold tracking-wider uppercase shadow-[0_0_12px_rgba(6,182,212,0.25)]">
+            <BrainCircuit className="h-3.5 w-3.5 animate-pulse" />
+            RankRadar ML Engine Active
+          </span>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <SkeletonBlock className="h-72" />
-          <SkeletonBlock className="h-72" />
+
+        <MLLoader label="Executing Machine Learning Model" />
+
+        <p className="text-xs text-slate-400 mt-4 max-w-md">
+          Analyzing historical test records, calculating batch percentiles, and predicting Semester IV performance...
+        </p>
+
+        {/* Animated Progress Bar */}
+        <div className="w-full max-w-xs bg-slate-800/80 rounded-full h-2 mt-6 overflow-hidden border border-white/10 p-0.5">
+          <motion.div
+            initial={{ width: "0%" }}
+            animate={{ width: "100%" }}
+            transition={{ duration: 0.95, ease: "easeInOut" }}
+            className="h-full bg-gradient-to-r from-indigo-500 via-cyan-400 to-emerald-400 rounded-full shadow-[0_0_10px_rgba(0,240,255,0.5)]"
+          />
         </div>
-        <SkeletonBlock className="h-60" />
       </div>
-    </div>
+    </motion.div>
   );
 
   /* ──────────────── PROFILE HERO ──────────────── */
@@ -724,13 +937,17 @@ const renderSearchPage = () => (
     </motion.section>
   );
 
-  const renderMarkRow = (subject, test, label, fallbackMax = TEST_MAX[test]) => (
-    <tr key={test} className="mark-row">
-      <td className="mark-label">{label}</td>
-      <td className="mark-max">/{fallbackMax}</td>
-      <td className="mark-value">{formatNumber(getMarkValue(subject, test))}</td>
-    </tr>
-  );
+  const renderMarkRow = (subject, test, label, fallbackMax = TEST_MAX[test]) => {
+    const val = getMarkValue(subject, test);
+    return (
+      <tr key={test} className="mark-row">
+        <td className="mark-label">{label}</td>
+        <td className="mark-value font-mono text-right">
+          {val !== undefined && val !== null ? `${formatNumber(val)} / ${fallbackMax}` : `-- / ${fallbackMax}`}
+        </td>
+      </tr>
+    );
+  };
 
   /* ──────────────── SUBJECT CARD ──────────────── */
   const renderSubjectCard = (subject, index, { semester } = {}) => (
@@ -752,13 +969,21 @@ const renderSearchPage = () => (
               <>
                 <tr className="mark-row">
                   <td className="mark-label">T4 · Predicted</td>
-                  <td className="mark-max">/50</td>
-                  <td className="mark-value mark-predicted">{formatNumber(subject.predictedT4)}</td>
+                  <td className="mark-value mark-predicted font-mono text-right">
+                    {subject.predictedT4 !== undefined ? (
+                      <>
+                        <AnimatedCounter value={subject.predictedT4} /> / 50
+                      </>
+                    ) : (
+                      "-- / 50"
+                    )}
+                  </td>
                 </tr>
                 <tr className="mark-row">
                   <td className="mark-label">T4 · Actual</td>
-                  <td className="mark-max">/50</td>
-                  <td className="mark-value">{subject.hasActualT4 ? formatNumber(subject.actualT4) : "Pending"}</td>
+                  <td className="mark-value font-mono text-right">
+                    {subject.hasActualT4 ? `${formatNumber(subject.actualT4)} / 50` : "Pending"}
+                  </td>
                 </tr>
               </>
             ) : (
@@ -790,32 +1015,79 @@ const renderSearchPage = () => (
   );
 
   /* ──────────────── SEMESTER 4 ──────────────── */
-  const renderSemester4 = () => (
-    <section className="section-wrap">
-      <div className="section-header">
-        <p className="section-eyebrow">Semester IV</p>
-        <h3 className="section-title">Subject-wise Marks · T1–T4 &amp; ML Prediction</h3>
-      </div>
-      <div className="subjects-grid">
-        {semester4.length
-          ? semester4.map((s, i) => renderSubjectCard(s, i, { semester: 4 }))
-          : <ClayCard className="empty-card"><BrainCircuit className="h-8 w-8 text-[var(--cyan-400)]" /><p className="empty-text">No Semester IV data available.</p></ClayCard>}
-      </div>
-      <button
-        onClick={handlePredictAll}
-        disabled={predictionLoading || predictionDone || !semester4.length}
-        className="premium-btn predict-btn"
-      >
-        {predictionLoading ? (
-          <><MLLoader size="sm" /><span>Running Prediction Model</span></>
-        ) : predictionDone ? (
-          <><CheckCircle2 className="h-5 w-5" /><span>ML Predictions Generated</span></>
-        ) : (
-          <><BrainCircuit className="h-5 w-5" /><span>Run ML Prediction</span></>
-        )}
-      </button>
-    </section>
-  );
+  const renderSemester4 = () => {
+    const predictedScores = semester4.map((s) => s.predictedT4).filter((v) => v !== undefined && v !== null);
+    const avgPredicted = predictedScores.length
+      ? Math.round((predictedScores.reduce((a, b) => a + Number(b), 0) / predictedScores.length) * 10) / 10
+      : 0;
+
+    return (
+      <section className="section-wrap">
+        <div className="section-header flex items-center justify-between">
+          <div>
+            <p className="section-eyebrow">Semester IV Intelligence</p>
+            <h3 className="section-title">ML Marks Prediction &amp; Test Tracking</h3>
+          </div>
+          <span className="ml-model-tag">
+            <BrainCircuit className="h-4 w-4" />
+            ML Model Engine Active
+          </span>
+        </div>
+
+        {/* Prediction Summary Hero Banner */}
+        <div className="ml-prediction-hero">
+          <div className="ml-prediction-header">
+            <div>
+              <h4 className="text-lg font-bold text-[var(--text-primary)]">Semester IV Final Test (T4) ML Predictor</h4>
+              <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+                Calculates predicted T4 score out of 50 based on T1, T2, &amp; T3 historical test trends.
+              </p>
+            </div>
+            <button
+              onClick={handlePredictAll}
+              disabled={predictionLoading || predictionDone || !semester4.length}
+              className="premium-btn"
+            >
+              {predictionLoading ? (
+                <><MLLoader size="sm" /><span>Executing ML Model...</span></>
+              ) : predictionDone ? (
+                <><CheckCircle2 className="h-5 w-5 text-emerald-400" /><span>ML Predictions Ready</span></>
+              ) : (
+                <><BrainCircuit className="h-5 w-5 text-cyan-400" /><span>Run ML Prediction</span></>
+              )}
+            </button>
+          </div>
+
+          <div className="prediction-stats-row">
+            <div className="prediction-stat-box">
+              <span className="prediction-stat-label">Model Algorithms</span>
+              <span className="text-xs font-semibold text-[var(--color-indigo-400)]">Random Forest &amp; GBDT</span>
+            </div>
+            <div className="prediction-stat-box">
+              <span className="prediction-stat-label">Predicted T4 Average</span>
+              <span className="prediction-stat-val">{predictionDone ? `${avgPredicted} / 50` : "-- / 50"}</span>
+            </div>
+            <div className="prediction-stat-box">
+              <span className="prediction-stat-label">Prediction Status</span>
+              <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                {predictionDone ? "Generated ✓" : predictionLoading ? "Computing..." : "Pending Execution"}
+              </span>
+            </div>
+            <div className="prediction-stat-box">
+              <span className="prediction-stat-label">Target Max Marks</span>
+              <span className="prediction-stat-val">50 Marks</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="subjects-grid">
+          {semester4.length
+            ? semester4.map((s, i) => renderSubjectCard(s, i, { semester: 4 }))
+            : <ClayCard className="empty-card"><BrainCircuit className="h-8 w-8 text-[var(--cyan-400)]" /><p className="empty-text">No Semester IV data available.</p></ClayCard>}
+        </div>
+      </section>
+    );
+  };
 
   /* ──────────────── ANALYTICS ──────────────── */
   const renderAnalytics = () => (
@@ -864,43 +1136,44 @@ const renderSearchPage = () => (
   const renderCharts = () => (
     <section className="section-wrap">
       <div className="section-header">
-        <p className="section-eyebrow">Visualisation</p>
-        <h3 className="section-title">Subject-wise Comparison</h3>
+        <p className="section-eyebrow">Visual Analytics</p>
+        <h3 className="section-title">Subject-wise Comparison &amp; ML Trends</h3>
       </div>
       <div className="charts-grid">
         <ClayCard className="chart-card">
-          <h4 className="chart-title">Semester III · Marks (T1–T4)</h4>
+          <h4 className="chart-title">Semester III · Test Marks (T1–T4)</h4>
           <div className="chart-wrap">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartSemester3}>
-                <CartesianGrid stroke="var(--hairline)" vertical={false} />
-                <XAxis dataKey="subject" tick={{ fill: "currentColor", fontSize: 10 }} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" height={70} />
-                <YAxis tick={{ fill: "currentColor", fontSize: 11 }} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{ borderRadius: 14, border: "1px solid var(--hairline)", background: "var(--panel)", fontFamily: "var(--font-body)" }} />
-                <Legend />
-                <Bar dataKey="T1" fill={chartColors.T1} radius={[6, 6, 0, 0]} />
-                <Bar dataKey="T2" fill={chartColors.T2} radius={[6, 6, 0, 0]} />
-                <Bar dataKey="T3" fill={chartColors.T3} radius={[6, 6, 0, 0]} />
-                <Bar dataKey="T4" fill={chartColors.T4} radius={[6, 6, 0, 0]} />
+                <CartesianGrid stroke="var(--border-subtle)" vertical={false} />
+                <XAxis dataKey="subject" tick={{ fill: "var(--text-muted)", fontSize: 10 }} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" height={70} />
+                <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border-subtle)", background: "var(--glass-bg)", backdropFilter: "blur(12px)", color: "var(--text-primary)", fontFamily: "var(--font-sans)" }} />
+                <Legend wrapperStyle={{ paddingTop: 10 }} />
+                <Bar dataKey="T1" fill={chartColors.T1} radius={[6, 6, 0, 0]} isAnimationActive={true} animationDuration={1200} />
+                <Bar dataKey="T2" fill={chartColors.T2} radius={[6, 6, 0, 0]} isAnimationActive={true} animationDuration={1200} />
+                <Bar dataKey="T3" fill={chartColors.T3} radius={[6, 6, 0, 0]} isAnimationActive={true} animationDuration={1200} />
+                <Bar dataKey="T4" fill={chartColors.T4} radius={[6, 6, 0, 0]} isAnimationActive={true} animationDuration={1200} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </ClayCard>
+
         <ClayCard className="chart-card">
-          <h4 className="chart-title">Semester IV · ML Prediction vs Actual</h4>
+          <h4 className="chart-title">Semester IV · ML Prediction vs Actual Trends</h4>
           <div className="chart-wrap">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartSemester4}>
-                <CartesianGrid stroke="var(--hairline)" vertical={false} />
-                <XAxis dataKey="subject" tick={{ fill: "currentColor", fontSize: 10 }} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" height={70} />
-                <YAxis tick={{ fill: "currentColor", fontSize: 11 }} tickLine={false} axisLine={false} domain={[0, 50]} />
-                <Tooltip contentStyle={{ borderRadius: 14, border: "1px solid var(--hairline)", background: "var(--panel)", fontFamily: "var(--font-body)" }} />
-                <Legend />
-                <Line type="monotone" dataKey="T1" stroke={chartColors.T1} strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="T2" stroke={chartColors.T2} strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="T3" stroke={chartColors.T3} strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="Predicted" stroke={chartColors.Predicted} strokeWidth={3} dot={{ r: 4 }} name="T4 Predicted" strokeDasharray="5 3" />
-                <Line type="monotone" dataKey="Actual" stroke={chartColors.Actual} strokeWidth={3} dot={{ r: 4 }} name="T4 Actual" />
+                <CartesianGrid stroke="var(--border-subtle)" vertical={false} />
+                <XAxis dataKey="subject" tick={{ fill: "var(--text-muted)", fontSize: 10 }} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" height={70} />
+                <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} tickLine={false} axisLine={false} domain={[0, 50]} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border-subtle)", background: "var(--glass-bg)", backdropFilter: "blur(12px)", color: "var(--text-primary)", fontFamily: "var(--font-sans)" }} />
+                <Legend wrapperStyle={{ paddingTop: 10 }} />
+                <Line type="monotone" dataKey="T1" stroke={chartColors.T1} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={true} animationDuration={1200} />
+                <Line type="monotone" dataKey="T2" stroke={chartColors.T2} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={true} animationDuration={1200} />
+                <Line type="monotone" dataKey="T3" stroke={chartColors.T3} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={true} animationDuration={1200} />
+                <Line type="monotone" dataKey="Predicted" stroke={chartColors.Predicted} strokeWidth={3} dot={{ r: 4 }} name="T4 Predicted" strokeDasharray="5 3" isAnimationActive={true} animationDuration={1200} />
+                <Line type="monotone" dataKey="Actual" stroke={chartColors.Actual} strokeWidth={3} dot={{ r: 4 }} name="T4 Actual" isAnimationActive={true} animationDuration={1200} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -908,6 +1181,11 @@ const renderSearchPage = () => (
       </div>
     </section>
   );
+
+  const scrollToSection = (id) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  };
 
   /* ──────────────── PROFILE PAGE ──────────────── */
   const renderProfilePage = () => {
@@ -933,12 +1211,42 @@ const renderSearchPage = () => (
         transition={{ duration: 0.35 }}
         className="profile-page"
       >
-        {renderProfileHero()}
-        {renderSemester3()}
-        {renderSemester4()}
-        {renderAnalytics()}
-        {renderCharts()}
-        {renderInsights()}
+        <div className="app-dashboard-shell">
+          <div className="app-main-workspace pb-20 md:pb-0">
+            <div id="overview" className="space-y-6">
+              {renderProfileHero()}
+              {renderAnalytics()}
+            </div>
+            <div id="sem4">{renderSemester4()}</div>
+            <div id="sem3">{renderSemester3()}</div>
+            <div id="charts">{renderCharts()}</div>
+            <div id="insights">{renderInsights()}</div>
+          </div>
+        </div>
+
+        {/* Mobile Glass Bottom Navigation Bar (<768px) */}
+        <nav className="app-mobile-nav flex md:hidden" aria-label="Mobile Navigation">
+          <button onClick={() => scrollToSection("overview")} className="mobile-nav-btn active">
+            <UserRound className="h-4 w-4" />
+            <span>Overview</span>
+          </button>
+          <button onClick={() => scrollToSection("sem4")} className="mobile-nav-btn">
+            <BrainCircuit className="h-4 w-4 text-[var(--color-cyan-400)]" />
+            <span>Predict</span>
+          </button>
+          <button onClick={() => scrollToSection("sem3")} className="mobile-nav-btn">
+            <BookOpen className="h-4 w-4" />
+            <span>Sem III</span>
+          </button>
+          <button onClick={() => scrollToSection("charts")} className="mobile-nav-btn">
+            <BarChart3 className="h-4 w-4" />
+            <span>Charts</span>
+          </button>
+          <button onClick={resetToSearch} className="mobile-nav-btn text-rose-400">
+            <Search className="h-4 w-4" />
+            <span>Search</span>
+          </button>
+        </nav>
       </motion.div>
     );
   };
@@ -964,6 +1272,10 @@ const renderSearchPage = () => (
   /* ──────────────── ROOT ──────────────── */
   return (
     <div className="app-shell">
+      <EngineRedirectOverlay
+        isVisible={profileLoading || isRedirecting}
+        enrollmentNo={searchTerm || (student ? getEnrollment(student) : "") || initialRoute.enrollment}
+      />
       <div className="app-inner">
         {renderHeader()}
         <main className="app-main">

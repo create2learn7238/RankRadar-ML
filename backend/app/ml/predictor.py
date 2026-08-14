@@ -36,7 +36,7 @@ def predict_final_score(
 ) -> dict:
     model = get_model()
     score = float(model.predict(build_features(t1, t2, t3))[0])
-    score = round(max(0.0, min(50.0, score)), 2)
+    score_out_of_50 = round(max(0.0, min(50.0, score if score > 25.0 else score * 2.0)), 2)
 
     input_avg = round((t1 + t2 + t3) / 3.0, 2)
     std = float(np.std([t1, t2, t3]))
@@ -47,8 +47,22 @@ def predict_final_score(
     else:
         confidence = "Low - high variation; prediction may be less accurate."
 
+    if subject_name and ("foundation of computer science" in subject_name.lower() or "fcsp" in subject_name.lower()):
+        avg_score_50 = round(input_avg * 2.0, 2)
+        return {
+            "predicted_final_score": avg_score_50,
+            "confidence_note": "Calculated directly as average marks of T1, T2, T3.",
+            "input_avg": input_avg,
+            "subject_name": subject_name,
+            "max_marks": 50,
+        }
+
     return {
+<<<<<<< HEAD
+        "predicted_final_score": score_out_of_50,
+=======
         "predicted_final_score": score*2,
+>>>>>>> 03c6972c9eec3e7829993afbbea3fd5bd0ce3e39
         "confidence_note": confidence,
         "input_avg": input_avg,
         "subject_name": subject_name,
